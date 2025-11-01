@@ -1,6 +1,7 @@
 ﻿using KrokCompiler.Interfaces;
 using KrokCompiler.Lexer;
 using KrokCompiler.Models;
+using KrokCompiler.Parser;
 
 string filePath = "..\\..\\..\\..\\..\\demo.kr";
 if (args.Length == 0)
@@ -24,24 +25,18 @@ try
 }
 catch (FileNotFoundException)
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"Error: File not found at path: {filePath}");
-    Console.ResetColor();
+    Utils.PrintError($"Error: File not found at path: {filePath}");
     return;
 }
 catch (Exception ex)
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"An error occurred while reading the file: {ex.Message}");
-    Console.ResetColor();
+    Utils.PrintError($"An error occurred while reading the file: {ex.Message}");
     return;
 }
 
 if (string.IsNullOrWhiteSpace(sourceCode))
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine("Error: empty source file");
-    Console.ResetColor();
+    Utils.PrintError("Error: empty source file");
     return;
 }
 
@@ -52,5 +47,19 @@ var lexer = new Lexer(scanner);
 List<Token> tokens = lexer.Analyze();
 
 Utils.PrintConstantsAndIdentifiers(tokens);
+if (tokens.Count == 0) return;
+Utils.PrintSuccess("Lexer: Lexical analysis completed successfully");
+
+Console.WriteLine("--- Staring Syntax Analisis ---");
+try
+{
+    Parser parser = new Parser(tokens);
+    parser.ParseProgram();
+    Utils.PrintSuccess("Syntax Analysis Successful: Program is valid!");
+}
+catch (ParserException e)
+{
+    Utils.PrintError($"Syntax Analysis Failed \n{e.Message}");
+}
 
 Console.ReadKey();

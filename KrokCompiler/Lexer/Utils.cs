@@ -29,6 +29,20 @@ namespace KrokCompiler.Lexer
             }
         }
 
+        public static void PrintSuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        public static void PrintError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
         /// <summary>
         /// Function to print tables of unique constants and identifiers
         /// </summary>

@@ -60,7 +60,6 @@ namespace KrokCompiler.Lexer
                     }
                 }
                 _tokens.Add(new Token(TokenType.Eof, "", null, _scanner.Line, _scanner.Column));
-                PrintLexerSuccess();
                 return _tokens;
             }
             catch (LexerException e)
@@ -71,13 +70,6 @@ namespace KrokCompiler.Lexer
                 Environment.Exit(1);
                 throw;
             }
-        }
-        
-        private void PrintLexerSuccess()
-        {            
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("Lexer: Lexical analysis completed successfully");
-            Console.ResetColor();
         }
 
         private State NextState(State currentState, string charClass)
@@ -96,12 +88,6 @@ namespace KrokCompiler.Lexer
 
             // Якщо не знайдено нічого (помилка в самій STF):
             return State.q_ERR_IllegalChar;
-        }
-
-
-        public class LexerException : Exception
-        {
-            public LexerException(string message) : base(message) { }
         }
 
         private void InitializeTables()
