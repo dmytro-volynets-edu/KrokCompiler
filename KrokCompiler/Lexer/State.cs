@@ -49,6 +49,10 @@
         q_nl_F,             // Заключний стан для \n
 
         // 5. Заключний стан помилки
-        q_ERR_F
+        q_ERR_IllegalChar,      // Нерозпізнаний символ (напр. #, @, &)
+        q_ERR_UnclosedString,   // Незакритий рядок (напр. "hello )
+        q_ERR_InvalidNumber,    // Некоректне число (напр. .a)
+        q_ERR_ExpectedEquals    // Очікувався '=' (напр. !a)
+
     }
 }

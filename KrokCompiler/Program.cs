@@ -1,4 +1,6 @@
-﻿using KrokCompiler.Lexer;
+﻿using KrokCompiler.Interfaces;
+using KrokCompiler.Lexer;
+using KrokCompiler.Models;
 
 string filePath = "..\\..\\..\\..\\..\\demo.kr";
 if (args.Length == 0)
@@ -35,9 +37,20 @@ catch (Exception ex)
     return;
 }
 
+if (string.IsNullOrWhiteSpace(sourceCode))
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine("Error: empty source file");
+    Console.ResetColor();
+    return;
+}
 
-var lexer = new Lexer();
+IScanner scanner = new Scanner(sourceCode);
 
-var tokens = lexer.Analyze(sourceCode);
+var lexer = new Lexer(scanner);
+
+List<Token> tokens = lexer.Analyze();
+
+Utils.PrintConstantsAndIdentifiers(tokens);
 
 Console.ReadKey();

@@ -1,83 +1,67 @@
-﻿namespace KrokCompiler.Lexer
+﻿using KrokCompiler.Interfaces;
+using KrokCompiler.Models;
+
+namespace KrokCompiler.Lexer
 {
     public class Lexer
     {
+        private readonly IScanner _scanner;
+        private List<Token> _tokens = new List<Token>();     // результат роботи
+
         // 1. Таблиці станів та токенів
         private Dictionary<(State, string), State> _stf; // Функція переходів (Діаграма станів)
         private HashSet<State> _F;                      // Множина заключних станів
         private HashSet<State> _Fstar;                  // Стани, що потребують повернення
         private HashSet<State> _Ferror;                 // Стани помилок
 
-        private Dictionary<string, string> _keywordTable; // Таблиця ключових слів
-        private Dictionary<State, string> _tokStateTable;  // Таблиця токенів за станом
+        private Dictionary<string, TokenType> _keywordTable; // Таблиця ключових слів
+        private Dictionary<State, TokenType> _tokStateTable;  // Таблиця токенів за станом
 
         // 2. Стан аналізатора
         private State _state;          // Поточний стан (int у вашому прикладі)
-        private int _numLine;          // Лічильник рядків
         private string _lexeme;        // Поточна лексема, що будується
-        private char _char;            // Поточний символ
+        private int _lexemeStartLine;
+        private int _lexemeStartColumn;
 
-        private string _sourceCode;    // Весь вхідний код
-        private int _numChar;          // Індекс поточного символу
 
-        // 3. Вихідні таблиці (результат роботи)
-        private List<SymbolTableEntry> _tableOfSymb;
-        private Dictionary<string, int> _tableOfId;
-        private Dictionary<string, (string, int)> _tableOfConst;
-
-        public Lexer()
+        public Lexer(IScanner scanner)
         {
+            _scanner = scanner;
+            _lexeme = "";
+            _state = State.q0;
             InitializeTables();
-            _tableOfId = new Dictionary<string, int>();
-            _tableOfConst = new Dictionary<string, (string, int)>();
-
         }
 
-        public List<SymbolTableEntry> Analyze(string sourceCode)
+        public List<Token> Analyze()
         {
-            if (string.IsNullOrWhiteSpace(sourceCode))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("Error: empty source file");
-                Console.ResetColor();
-                throw new Exception();
-            }
-            _sourceCode = sourceCode;
-            _numChar = -1;
-            _numLine = 1;
-            _state = State.q0;
-            _lexeme = "";
-
-            // Ініціалізуємо вихідні таблиці
-            _tableOfSymb = new List<SymbolTableEntry>();
-            _tableOfId = new Dictionary<string, int>();
-            _tableOfConst = new Dictionary<string, (string, int)>();
+            _tokens.Clear();
 
             try
             {
-                while (_numChar < _sourceCode.Length - 1)
+                while (!_scanner.IsAtEnd)
                 {
-                    _char = NextChar();
-                    string charClass = GetCharClass(_char);
+                    char currentSymbol = _scanner.Advance();
+                    string charClass = GetCharClass(currentSymbol);
                     _state = NextState(_state, charClass);
 
                     if (_F.Contains(_state)) // Якщо стан заключний
                     {
-                        Processing();
+                        Processing(currentSymbol);
                     }
                     else if (_state == State.q0) // Якщо стан стартовий (ігнор)
                     {
                         _lexeme = "";
+                        _lexemeStartLine = _scanner.Line;
+                        _lexemeStartColumn = _scanner.Column;
                     }
                     else // Інакше - робочий стан
                     {
-                        _lexeme += _char; // Додати символ до лексеми
+                        _lexeme += currentSymbol; // Додати символ до лексеми
                     }
                 }
-                PrintIdentifiers();
-                PrintConstants();
+                _tokens.Add(new Token(TokenType.Eof, "", null, _scanner.Line, _scanner.Column));
                 PrintLexerSuccess();
-                return _tableOfSymb;
+                return _tokens;
             }
             catch (LexerException e)
             {
@@ -96,40 +80,6 @@
             Console.ResetColor();
         }
 
-        private void PrintIdentifiers()
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("-----------------------");
-            Console.WriteLine("Identifiers:");
-            Console.ResetColor();
-            foreach (var item in _tableOfId)
-            {
-                Console.WriteLine($"{item.Key}  {item.Value}");
-            }
-        }
-        private void PrintConstants()
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("-----------------------");
-            Console.WriteLine("Constants:");
-            Console.ResetColor();
-            foreach (var item in _tableOfConst)
-            {
-                Console.WriteLine($"{item.Key}  {item.Value}");
-            }
-        }
-
-        private char NextChar()
-        {
-            _numChar++;
-            return _sourceCode[_numChar];
-        }
-
-        private void PutCharBack()
-        {
-            _numChar--;
-        }
-
         private State NextState(State currentState, string charClass)
         {
             // Намагаємося знайти прямий перехід
@@ -144,9 +94,8 @@
                 return otherState;
             }
 
-            // Якщо не знайдено нічого (помилка в самій STF),
-            // повертаємо помилку (або кидаємо виняток)
-            return State.q_ERR_F;
+            // Якщо не знайдено нічого (помилка в самій STF):
+            return State.q_ERR_IllegalChar;
         }
 
 
@@ -163,7 +112,7 @@
                 // --- q0 (Стартовий стан) ---
                 { (State.q0, "ws"), State.q0 },             // Ігнорувати пробіл
                 { (State.q0, "nl"), State.q_nl_F },         // Ігнорувати + лічильник
-                { (State.q0, "other"), State.q_ERR_F },     // Помилка (нерозпізнаний символ)
+                { (State.q0, "other"), State.q_ERR_IllegalChar },     // Помилка (нерозпізнаний символ)
 
                 // Початки токенів
                 { (State.q0, "Letter"), State.q_id },
@@ -200,14 +149,14 @@
                 { (State.q_num_int, "other"), State.q_int_F },  // Завершено int, Fstar
 
                 { (State.q_num_real_pre, "Digit"), State.q_num_real_post },
-                { (State.q_num_real_pre, "other"), State.q_ERR_F }, // Помилка: одинарна крапка
+                { (State.q_num_real_pre, "other"), State.q_ERR_InvalidNumber }, // Помилка: одинарна крапка
 
                 { (State.q_num_real_post, "Digit"), State.q_num_real_post },
                 { (State.q_num_real_post, "other"), State.q_real_F }, // Завершено real, Fstar
     
                 // --- Розпізнавання рядка ---
                 { (State.q_str, "quote"), State.q_str_F },      // Завершено string, F
-                { (State.q_str, "nl"), State.q_ERR_F },        // Помилка: незакритий рядок
+                { (State.q_str, "nl"), State.q_ERR_UnclosedString },        // Помилка: незакритий рядок
                 { (State.q_str, "other"), State.q_str },      // Будь-який інший символ
 
                 // --- Розпізнавання коментаря та ділення ---
@@ -222,7 +171,7 @@
                 { (State.q_assign, "other"), State.q_assign_F }, // Завершено op_assign, Fstar
     
                 { (State.q_not, "assign_eq"), State.q_neq_F }, // Завершено op_neq, F
-                { (State.q_not, "other"), State.q_ERR_F },    // Помилка: одинарний '!'
+                { (State.q_not, "other"), State.q_ERR_ExpectedEquals },    // Помилка: одинарний '!'
 
                 { (State.q_lt, "assign_eq"), State.q_le_F },    // Завершено op_le, F
                 { (State.q_lt, "other"), State.q_lt_F },      // Завершено op_lt, Fstar
@@ -232,55 +181,55 @@
             };
 
             // Таблиця ключових слів
-            _keywordTable = new Dictionary<string, string>
+            _keywordTable = new Dictionary<string, TokenType>
             {
-                { "var", "kw_var" },
-                { "const", "kw_const" },
-                { "func", "kw_func" },
-                { "if", "kw_if" },
-                { "else", "kw_else" },
-                { "for", "kw_for" },
-                { "return", "kw_return" },
-                { "break", "kw_break" },
-                { "int", "kw_int" },
-                { "float64", "kw_float64" },
-                { "bool", "kw_bool" },
-                { "string", "kw_string" },
-                { "void", "kw_void" },
-                { "read", "kw_read" },
-                { "write", "kw_write" }
+                { "var", TokenType.KwVar },
+                { "const", TokenType.KwConst },
+                { "func", TokenType.KwFunc },
+                { "if", TokenType.KwIf },
+                { "else", TokenType.KwElse },
+                { "for", TokenType.KwFor },
+                { "return", TokenType.KwReturn },
+                { "break", TokenType.KwBreak },
+                { "int", TokenType.KwInt },
+                { "float64", TokenType.KwFloat64 },
+                { "bool", TokenType.KwBool },
+                { "string", TokenType.KwString },
+                { "void", TokenType.KwVoid },
+                { "read", TokenType.KwRead },
+                { "write", TokenType.KwWrite }
             };
 
             // Таблиця токенів за станом
-            _tokStateTable = new Dictionary<State, string>
+            _tokStateTable = new Dictionary<State, TokenType>
             {
                 // Стани, що потребують повернення (Fstar)
-                { State.q_id_F, "id" },
-                { State.q_int_F, "int_const" },
-                { State.q_real_F, "real_const" },
-                { State.q_div_F, "op_div" },
-                { State.q_assign_F, "op_assign" },
-                { State.q_lt_F, "op_lt" },
-                { State.q_gt_F, "op_gt" },
+                { State.q_id_F, TokenType.Id },
+                { State.q_int_F, TokenType.IntConst },
+                { State.q_real_F, TokenType.RealConst },
+                { State.q_div_F, TokenType.OpDiv },
+                { State.q_assign_F, TokenType.OpAssign },
+                { State.q_lt_F, TokenType.OpLt },
+                { State.q_gt_F, TokenType.OpGt },
 
                 // Звичайні заключні стани (без повернення)
-                { State.q_str_F, "string_const" },
-                { State.q_eq_F, "op_eq" },
-                { State.q_le_F, "op_le" },
-                { State.q_ge_F, "op_ge" },
-                { State.q_neq_F, "op_neq" },
+                { State.q_str_F, TokenType.StringConst },
+                { State.q_eq_F, TokenType.OpEq },
+                { State.q_le_F, TokenType.OpLe },
+                { State.q_ge_F, TokenType.OpGe },
+                { State.q_neq_F, TokenType.OpNeq },
     
                 // Односимвольні оператори (без повернення)
-                { State.q_add_F, "op_add" },
-                { State.q_sub_F, "op_sub" },
-                { State.q_mul_F, "op_mul" },
-                { State.q_pow_F, "op_pow" },
-                { State.q_lparen_F, "lparen" },
-                { State.q_rparen_F, "rparen" },
-                { State.q_lbrace_F, "lbrace" },
-                { State.q_rbrace_F, "rbrace" },
-                { State.q_comma_F, "comma" },
-                { State.q_semicolon_F, "semicolon" }
+                { State.q_add_F, TokenType.OpAdd },
+                { State.q_sub_F, TokenType.OpSub },
+                { State.q_mul_F, TokenType.OpMul },
+                { State.q_pow_F, TokenType.OpPow },
+                { State.q_lparen_F, TokenType.LParen },
+                { State.q_rparen_F, TokenType.RParen },
+                { State.q_lbrace_F, TokenType.LBrace },
+                { State.q_rbrace_F, TokenType.RBrace },
+                { State.q_comma_F, TokenType.Comma },
+                { State.q_semicolon_F, TokenType.Semicolon }
             };
 
             // Множини заключних станів
@@ -316,7 +265,10 @@
                 State.q_nl_F,
     
                 // Ferror (стан помилки)
-                State.q_ERR_F
+                State.q_ERR_IllegalChar,
+                State.q_ERR_UnclosedString,
+                State.q_ERR_InvalidNumber,
+                State.q_ERR_ExpectedEquals
             };
             // Множина заключних станів, що потребують повернення (F*)
             _Fstar = new HashSet<State>
@@ -329,7 +281,13 @@
                 State.q_lt_F,       // Напр., "<" + пробіл
                 State.q_gt_F        // Напр., ">" + пробіл
             };
-            _Ferror = new HashSet<State> { State.q_ERR_F };
+            _Ferror = new HashSet<State> 
+            { 
+                State.q_ERR_IllegalChar,
+                State.q_ERR_UnclosedString,
+                State.q_ERR_InvalidNumber,
+                State.q_ERR_ExpectedEquals,
+            };
         }
 
         private string GetCharClass(char c)
@@ -370,12 +328,11 @@
             }
         }
 
-        private void Processing()
+        private void Processing(char currentSymbol)
         {
             // 1. Обробка стану \n (лічильник рядків)
             if (_state == State.q_nl_F)
             {
-                _numLine++;
                 _state = State.q0;
                 _lexeme = ""; // Очищуємо лексему (на випадок, якщо щось залишилось)
                 return;
@@ -384,75 +341,50 @@
             // 2. Обробка стану помилки
             if (_Ferror.Contains(_state))
             {
-                Fail();
+                Fail(currentSymbol);
                 return;
             }
 
-            // 3. Визначення, чи потрібне повернення (retract)
+            // 3. Обробка повернення (Fstar)
             if (_Fstar.Contains(_state))
             {
-                PutCharBack();
+                _scanner.Retract(); // Використовуємо сканер
             }
             else
             {
-                // Якщо стан НЕ Fstar, це значить, що поточний символ
-                // є частиною лексеми (напр. "==", "!", '"').
-                // Додаємо символ до лексеми.
-                _lexeme += _char;
+                // Якщо не Fstar, поточний символ є частиною лексеми
+                _lexeme += currentSymbol;
             }
 
-            // 5. Отримання токена
-            string token = GetToken(_state, _lexeme);
+            // 4. Отримання ТИПУ токена
+            TokenType tokenType = GetTokenType(_state, _lexeme);
 
-            // 6. Обробка таблиць ID та констант
-            if (_state == State.q_id_F ||
-                _state == State.q_int_F ||
-                _state == State.q_real_F ||
-                _state == State.q_str_F) // Рядки - це теж константи
-            {
-                // Перевіряємо, чи це не ключове слово, 
-                // перш ніж додавати до таблиці ID
-                if (token != "id" && token != "int_const" &&
-                    token != "real_const" && token != "string_const")
-                {
-                    // Це ключове слово (напр. "kw_var"), індекс не потрібен
-                    AddSymbolToTable(_lexeme, token, null);
-                }
-                else
-                {
-                    // Це id або константа, потрібен індекс
-                    int? index = IndexIdConst(_lexeme, token);
-                    AddSymbolToTable(_lexeme, token, index);
-                }
-            }
-            else // Для решти токенів (оператори)
-            {
-                AddSymbolToTable(_lexeme, token, null);
-            }
+            // 5. Створення "Значення" (Value)
+            object value = ConvertLexemeToValue(_lexeme, tokenType);
 
-            // 7. Скидання для наступної лексеми
+            // 6. Створення токена
+            AddToken(tokenType, value);
+
+            // 7. Скидання
             _lexeme = "";
             _state = State.q0;
         }
 
+
         // Допоміжні методи, які викликає Processing()
-        private string GetToken(State state, string lexeme)
+        private TokenType GetTokenType(State state, string lexeme)
         {
-            // Спершу перевіряємо, чи це стан id, який може бути ключовим словом
             if (state == State.q_id_F)
             {
-                if (_keywordTable.TryGetValue(lexeme, out string keywordToken))
+                // Перевіряємо, чи це ключове слово
+                if (_keywordTable.TryGetValue(lexeme, out TokenType kwType))
                 {
-                    return keywordToken; // Це ключове слово (напр. "kw_var")
+                    return kwType;
                 }
+                return TokenType.Id; // Це звичайний ID
             }
-
-            // Інакше беремо токен зі станової таблиці
-            if (_tokStateTable.TryGetValue(state, out string token))
-            {
-                return token; // Напр. "id", "int_const", "op_assign"
-            }
-            return "UNKNOWN";
+            // Беремо зі станової таблиці
+            return _tokStateTable[state];
         }
 
         /// <summary>
@@ -461,62 +393,51 @@
         /// Якщо ні - додає її.
         /// Повертає індекс лексеми в її таблиці.
         /// </summary>
-        private int IndexIdConst(string lexeme, string token)
+        private object ConvertLexemeToValue(string lexeme, TokenType type)
         {
-            if (token == "id")
+            switch (type)
             {
-                // 1. Це Ідентифікатор
-                if (_tableOfId.TryGetValue(lexeme, out int index))
-                {
-                    // Вже бачили цей id, повертаємо існуючий індекс
-                    return index;
-                }
-                else
-                {
-                    // Новий id, додаємо його
-                    int newIndex = _tableOfId.Count + 1; // Індекси зазвичай з 1
-                    _tableOfId.Add(lexeme, newIndex);
-                    return newIndex;
-                }
-            }
-            else
-            {
-                // 2. Це Константа (int_const або real_const)
-                if (_tableOfConst.TryGetValue(lexeme, out (string, int) entry))
-                {
-                    // Вже бачили цю константу
-                    return entry.Item2; // Повертаємо її індекс
-                }
-                else
-                {
-                    // Нова константа
-                    int newIndex = _tableOfConst.Count + 1;
-                    // Зберігаємо (токен, індекс), напр. ("int_const", 1)
-                    _tableOfConst.Add(lexeme, (token, newIndex));
-                    return newIndex;
-                }
+                case TokenType.IntConst:
+                    return int.Parse(lexeme); // Або Int64.Parse
+                case TokenType.RealConst:
+                    return double.Parse(lexeme, System.Globalization.CultureInfo.InvariantCulture);
+                case TokenType.StringConst:
+                    // Видаляємо лапки
+                    return lexeme.Substring(1, lexeme.Length - 2);
+                case TokenType.BoolConst:
+                    return lexeme == "true";
+                default:
+                    return null; // Для ID, операторів тощо value не потрібне
             }
         }
-
-        private void AddSymbolToTable(string lexeme, string token, int? index)
+        private void AddToken(TokenType type, object value)
         {
-            var entry = new SymbolTableEntry
-            {
-                LineNum = _numLine,
-                Lexeme = lexeme,
-                Token = token,
-                IndexIdConst = index
-            };
-            _tableOfSymb.Add(entry);
-            Console.WriteLine(entry.ToString());
+            _tokens.Add(new Token(type, _lexeme, value, _lexemeStartLine, _lexemeStartColumn));
+            // (Друк в консоль тепер можна робити тут,
+            // викликавши _tokens.Last().ToString())
+            Console.WriteLine(_tokens.Last().ToString());
         }
 
         // Обробка помилок
-        private void Fail()
+        private void Fail(char currentSymbol)
         {
-            string displayableChar = Utils.GetDisplayableChar(_char);
-            string message = $"Lexer: Line {_numLine} has unexpected symbol '{displayableChar}'";
-            throw new LexerException(message);
+            string displayableChar = Utils.GetDisplayableChar(currentSymbol);
+            string errorMessage = _state switch
+            {
+                State.q_ERR_UnclosedString =>
+                    "Unclosed string literal. String literals cannot span multiple lines.",
+
+                State.q_ERR_InvalidNumber =>
+                    $"Invalid number format. Expected a digit after '.', but got '{displayableChar}'.",
+
+                State.q_ERR_ExpectedEquals =>
+                    $"Invalid operator. Expected '=' after '!', but got '{displayableChar}'.",
+
+                State.q_ERR_IllegalChar or _ =>
+                    $"Illegal or unexpected character: '{displayableChar}'"
+            };
+            string fullMessage = $"Lexer Error: (Line {_lexemeStartLine}, Column {_lexemeStartColumn}) -> {errorMessage}";
+            throw new LexerException(fullMessage);
         }
     }
 }
