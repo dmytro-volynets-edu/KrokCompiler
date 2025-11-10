@@ -1,4 +1,4 @@
-﻿using KrokCompiler.Interfaces;
+﻿using KrokCompiler.Abstractions;
 
 namespace KrokCompiler.Lexer
 {

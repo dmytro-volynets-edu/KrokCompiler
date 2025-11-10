@@ -1,4 +1,4 @@
-﻿using KrokCompiler.Interfaces;
+﻿using KrokCompiler.Abstractions;
 using KrokCompiler.Lexer;
 using KrokCompiler.Models;
 using KrokCompiler.Parser;
@@ -54,8 +54,12 @@ Console.WriteLine("--- Staring Syntax Analisis ---");
 try
 {
     Parser parser = new Parser(tokens);
-    parser.ParseProgram();
+    ProgramNode ast = parser.ParseProgram();
     Utils.PrintSuccess("Syntax Analysis Successful: Program is valid!");
+	Utils.PrintSuccess("----Abstract Syntax Tree----");
+	var printer = new AstPrinter();
+	string astString = printer.Print(ast);
+	Console.WriteLine(astString);
 }
 catch (ParserException e)
 {

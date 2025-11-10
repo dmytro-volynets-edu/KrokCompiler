@@ -1,4 +1,4 @@
-﻿namespace KrokCompiler.Interfaces
+﻿namespace KrokCompiler.Abstractions
 {
     public interface IScanner
     {
