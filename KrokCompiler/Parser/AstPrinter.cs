@@ -1,239 +1,164 @@
 ﻿using KrokCompiler.Abstractions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
-namespace KrokCompiler.Parser
+/// <summary>
+/// Друкує AST у вигляді "line-art" дерева.
+/// Цей клас використовує пряму рекурсію для обходу дерева
+/// </summary>
+public class AstPrinter
 {
-    public class AstPrinter : IAstVisitor
+    private StringBuilder _sb = new StringBuilder();
+
+    // Головний публічний метод
+    public string Print(IAstNode node)
     {
-        private StringBuilder _sb = new StringBuilder();
-        private int _indent = 0;
+        _sb.Clear();
+        PrintNodeRecursive(node, "", true);
+        return _sb.ToString();
+    }
 
-        public string Print(ProgramNode node)
+    /// <summary>
+    /// Рекурсивно друкує вузол та всіх його нащадків.
+    /// </summary>
+    /// <param name="node">Вузол для друку.</param>
+    /// <param name="indent">Поточний префікс відступу (напр. "│   ").</param>
+    /// <param name="isLast">Чи є цей вузол останнім у списку свого батька?</param>
+    private void PrintNodeRecursive(IAstNode node, string indent, bool isLast)
+    {
+        // 1. Малюємо лінію для поточного вузла
+        _sb.Append(indent);
+        _sb.Append(isLast ? "└── " : "├── ");
+
+        // 2. Визначаємо, який префікс передати дочірнім вузлам
+        string childIndent = indent + (isLast ? "    " : "│   ");
+
+        // 3. Використовуємо 'switch' для визначення, що це за вузол
+        // і як його друкувати.
+        switch (node)
         {
-            _sb.Clear();
-            node.Accept(this); // Запускаємо обхід дерева
-            return _sb.ToString();
+            // --- Вузли програми та блоків ---
+            case ProgramNode n:
+                _sb.AppendLine("Program");
+                PrintChildren(n.Statements, childIndent);
+                break;
+            case BlockStmt n:
+                _sb.AppendLine("Block");
+                PrintChildren(n.Statements, childIndent);
+                break;
+            case FuncDeclStmt n:
+                _sb.AppendLine($"FuncDecl {n.Name.Lexeme} (returns {n.ReturnType.Lexeme})");
+                if (n.Parameters.Any())
+                {
+                    PrintNodeRecursive(new AstListNode("Parameters", n.Parameters), childIndent, false);
+                }
+                PrintNodeRecursive(n.Body, childIndent, true);
+                break;
+            case ParameterDeclStmt n:
+                _sb.AppendLine($"Param {n.Name.Lexeme} ({n.Type.Lexeme})");
+                break;
+
+            // --- Інструкції ---
+            case VarDeclStmt n:
+                _sb.AppendLine($"VarDecl {n.Name.Lexeme} ({n.Type.Lexeme})");
+                break;
+            case ConstDeclStmt n:
+                _sb.AppendLine($"ConstDecl {n.Name.Lexeme} =");
+                PrintNodeRecursive(n.Initializer, childIndent, true);
+                break;
+            case ExpressionStmt n:
+                _sb.AppendLine("ExprStmt");
+                PrintNodeRecursive(n.Expression, childIndent, true);
+                break;
+            case AssignStmt n:
+                _sb.AppendLine($"Assign {n.Name.Lexeme} =");
+                PrintNodeRecursive(n.Value, childIndent, true);
+                break;
+            case IfStmt n:
+                _sb.AppendLine("If");
+                PrintNodeRecursive(n.Condition, childIndent, false);
+                PrintNodeRecursive(n.ThenBranch, childIndent, n.ElseBranch == null);
+                if (n.ElseBranch != null)
+                {
+                    PrintNodeRecursive(n.ElseBranch, childIndent, true);
+                }
+                break;
+            case ForStmt n:
+                _sb.AppendLine("For");
+                PrintNodeRecursive(n.Initializer ?? new NopStmt("Initializer"), childIndent, false);
+                PrintNodeRecursive(n.Condition ?? new LiteralExpr("(Empty Condition)"), childIndent, false);
+                PrintNodeRecursive(n.Increment ?? new NopStmt("Increment"), childIndent, false);
+                PrintNodeRecursive(n.Body, childIndent, true);
+                break;
+            case ReturnStmt n:
+                _sb.AppendLine("Return");
+                if (n.Value != null)
+                {
+                    PrintNodeRecursive(n.Value, childIndent, true);
+                }
+                break;
+            case BreakStmt:
+                _sb.AppendLine("Break");
+                break;
+            case WriteStmt n:
+                _sb.AppendLine("write");
+                PrintChildren(n.Arguments, childIndent);
+                break;
+            case ReadStmt n:
+                _sb.AppendLine("read");
+                // Перетворюємо список токенів на список вузлів AST для друку
+                var varsAsNodes = n.Variables.Select(v => new VariableExpr(v));
+                PrintChildren(varsAsNodes, childIndent);
+                break;
+
+            // --- Вирази ---
+            case BinaryExpr n:
+                _sb.AppendLine($"Binary {n.Operator.Lexeme}");
+                PrintNodeRecursive(n.Left, childIndent, false);
+                PrintNodeRecursive(n.Right, childIndent, true);
+                break;
+            case UnaryExpr n:
+                _sb.AppendLine($"Unary {n.Operator.Lexeme}");
+                PrintNodeRecursive(n.Right, childIndent, true);
+                break;
+            case CastExpr n:
+                _sb.AppendLine($"Cast ({n.Type.Lexeme})");
+                PrintNodeRecursive(n.Expression, childIndent, true);
+                break;
+            case CallExpr n:
+                _sb.AppendLine("Call");
+                PrintNodeRecursive(n.Callee, childIndent, false);
+                PrintNodeRecursive(new AstListNode("Arguments", n.Arguments), childIndent, true);
+                break;
+            case LiteralExpr n:
+                string val = n.Value is string s ? $"\"{s}\"" : (n.Value?.ToString() ?? "null");
+                _sb.AppendLine($"Literal {val}");
+                break;
+            case VariableExpr n:
+                _sb.AppendLine($"Var {n.Name.Lexeme}");
+                break;
+
+            // --- Спеціальні вузли для друку ---
+            case AstListNode n:
+                _sb.AppendLine(n.Name);
+                PrintChildren(n.Children, childIndent);
+                break;
+            case NopStmt n:
+                _sb.AppendLine($"(Empty {n.Name})");
+                break;
         }
+    }
 
-        private void Indent() => _sb.Append(' ', _indent * 2);
-
-        private void BeginBlock(string name)
+    /// <summary>
+    /// Допоміжний метод для друку списків (напр., тіло блоку або аргументи).
+    /// </summary>
+    private void PrintChildren(IEnumerable<IAstNode> children, string indent)
+    {
+        var childList = children.ToList();
+        for (int i = 0; i < childList.Count; i++)
         {
-            Indent();
-            _sb.AppendLine($"({name}");
-            _indent++;
-        }
-
-        private void EndBlock()
-        {
-            _indent--;
-            Indent();
-            _sb.AppendLine(")");
-        }
-
-        // --- РЕАЛІЗАЦІЯ ІНТЕРФЕЙСУ IAstVisitor ---
-
-        public void VisitProgramNode(ProgramNode node)
-        {
-            BeginBlock("Program");
-            foreach (var stmt in node.Statements)
-            {
-                stmt.Accept(this);
-            }
-            EndBlock();
-        }
-
-        public void VisitBlockStmt(BlockStmt stmt)
-        {
-            BeginBlock("Block");
-            foreach (var statement in stmt.Statements)
-            {
-                statement.Accept(this);
-            }
-            EndBlock();
-        }
-
-        public void VisitFuncDeclStmt(FuncDeclStmt stmt)
-        {
-            BeginBlock($"FuncDecl {stmt.Name.Lexeme} (returns {stmt.ReturnType.Lexeme})");
-            foreach (var param in stmt.Parameters)
-            {
-                param.Accept(this);
-            }
-            stmt.Body.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitParameterDeclStmt(ParameterDeclStmt stmt)
-        {
-            Indent();
-            _sb.AppendLine($"(Param {stmt.Name.Lexeme} {stmt.Type.Lexeme})");
-        }
-
-        public void VisitVarDeclStmt(VarDeclStmt stmt)
-        {
-            Indent();
-            _sb.AppendLine($"(VarDecl {stmt.Name.Lexeme} {stmt.Type.Lexeme})");
-        }
-
-        public void VisitConstDeclStmt(ConstDeclStmt stmt)
-        {
-            BeginBlock($"ConstDecl {stmt.Name.Lexeme} =");
-            stmt.Initializer.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitExpressionStmt(ExpressionStmt stmt)
-        {
-            // Це "обгортка" для таких речей, як виклики void-функцій
-            BeginBlock("ExprStmt");
-            stmt.Expression.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitAssignStmt(AssignStmt stmt)
-        {
-            BeginBlock($"Assign {stmt.Name.Lexeme} =");
-            stmt.Value.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitIfStmt(IfStmt stmt)
-        {
-            BeginBlock("If");
-            Indent(); _sb.AppendLine("(Condition"); _indent++;
-            stmt.Condition.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            Indent(); _sb.AppendLine("(Then"); _indent++;
-            stmt.ThenBranch.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            if (stmt.ElseBranch != null)
-            {
-                Indent(); _sb.AppendLine("(Else"); _indent++;
-                stmt.ElseBranch.Accept(this);
-                _indent--; Indent(); _sb.AppendLine(")");
-            }
-            EndBlock();
-        }
-
-        public void VisitForStmt(ForStmt stmt)
-        {
-            BeginBlock("For");
-
-            Indent(); _sb.AppendLine("(Init"); _indent++;
-            stmt.Initializer?.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            Indent(); _sb.AppendLine("(Condition"); _indent++;
-            stmt.Condition?.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            Indent(); _sb.AppendLine("(Increment"); _indent++;
-            stmt.Increment?.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            Indent(); _sb.AppendLine("(Body"); _indent++;
-            stmt.Body.Accept(this);
-            _indent--; Indent(); _sb.AppendLine(")");
-
-            EndBlock();
-        }
-
-        public void VisitReturnStmt(ReturnStmt stmt)
-        {
-            if (stmt.Value == null)
-            {
-                Indent(); _sb.AppendLine("(Return)");
-            }
-            else
-            {
-                BeginBlock("Return");
-                stmt.Value.Accept(this);
-                EndBlock();
-            }
-        }
-
-        public void VisitBreakStmt(BreakStmt stmt)
-        {
-            Indent();
-            _sb.AppendLine("(Break)");
-        }
-
-        public void VisitWriteStmt(WriteStmt stmt)
-        {
-            BeginBlock("write");
-            foreach (var arg in stmt.Arguments)
-            {
-                arg.Accept(this);
-            }
-            EndBlock();
-        }
-
-        public void VisitReadStmt(ReadStmt stmt)
-        {
-            BeginBlock("read");
-            foreach (var var in stmt.Variables)
-            {
-                Indent();
-                _sb.AppendLine($"(Var {var.Lexeme})");
-            }
-            EndBlock();
-        }
-
-        // --- Вирази ---
-
-        public void VisitBinaryExpr(BinaryExpr expr)
-        {
-            BeginBlock(expr.Operator.Lexeme); // Напр. (+)
-            expr.Left.Accept(this);
-            expr.Right.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitUnaryExpr(UnaryExpr expr)
-        {
-            BeginBlock($"(Unary {expr.Operator.Lexeme})"); // Напр. (Unary -)
-            expr.Right.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitCastExpr(CastExpr expr)
-        {
-            BeginBlock($"(Cast {expr.Type.Lexeme})"); // Напр. (Cast float64)
-            expr.Expression.Accept(this);
-            EndBlock();
-        }
-
-        public void VisitLiteralExpr(LiteralExpr expr)
-        {
-            Indent();
-            if (expr.Value is string s)
-                _sb.AppendLine($"\"{s}\""); // Рядки беремо в лапки
-            else
-                _sb.AppendLine(expr.Value.ToString());
-        }
-
-        public void VisitVariableExpr(VariableExpr expr)
-        {
-            Indent();
-            _sb.AppendLine($"(Var {expr.Name.Lexeme})");
-        }
-
-        public void VisitCallExpr(CallExpr expr)
-        {
-            BeginBlock("Call");
-            expr.Callee.Accept(this);
-            foreach (var arg in expr.Arguments)
-            {
-                arg.Accept(this);
-            }
-            EndBlock();
+            PrintNodeRecursive(childList[i], indent, i == childList.Count - 1);
         }
     }
 }
+
+

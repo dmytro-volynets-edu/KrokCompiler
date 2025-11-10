@@ -66,8 +66,13 @@ namespace KrokCompiler.Parser
 
             // Прості інструкції (потребують ';')
             Stmt stmt = ParseSimpleStatement();
-            Match(TokenType.Semicolon, "Expected ';' after statement.");
-            return stmt;
+            if (Check(TokenType.Semicolon))
+            {
+                Advance();
+                return stmt;
+            }
+
+            throw Error(PreviousToken, "Expected ';' after statement.");
         }
 
         // SimpleStatement = VarDecl | ConstDecl | ...
