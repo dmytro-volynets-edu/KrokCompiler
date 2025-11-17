@@ -29,11 +29,10 @@ public class AstPrinter
         _sb.Append(indent);
         _sb.Append(isLast ? "└── " : "├── ");
 
-        // 2. Визначаємо, який префікс передати дочірнім вузлам
+        // 2. Визначаємо префікс для дочірніх вузлів
         string childIndent = indent + (isLast ? "    " : "│   ");
 
         // 3. Використовуємо 'switch' для визначення, що це за вузол
-        // і як його друкувати.
         switch (node)
         {
             // --- Вузли програми та блоків ---
@@ -84,8 +83,9 @@ public class AstPrinter
                 break;
             case ForStmt n:
                 _sb.AppendLine("For");
+                // Використовуємо 'NopStmt' для візуалізації порожніх частин
                 PrintNodeRecursive(n.Initializer ?? new NopStmt("Initializer"), childIndent, false);
-                PrintNodeRecursive(n.Condition ?? new LiteralExpr("(Empty Condition)"), childIndent, false);
+                PrintNodeRecursive(n.Condition ?? new LiteralExpr("(Default True)"), childIndent, false);
                 PrintNodeRecursive(n.Increment ?? new NopStmt("Increment"), childIndent, false);
                 PrintNodeRecursive(n.Body, childIndent, true);
                 break;
@@ -105,7 +105,6 @@ public class AstPrinter
                 break;
             case ReadStmt n:
                 _sb.AppendLine("read");
-                // Перетворюємо список токенів на список вузлів AST для друку
                 var varsAsNodes = n.Variables.Select(v => new VariableExpr(v));
                 PrintChildren(varsAsNodes, childIndent);
                 break;
@@ -126,8 +125,11 @@ public class AstPrinter
                 break;
             case CallExpr n:
                 _sb.AppendLine("Call");
-                PrintNodeRecursive(n.Callee, childIndent, false);
-                PrintNodeRecursive(new AstListNode("Arguments", n.Arguments), childIndent, true);
+                PrintNodeRecursive(n.Callee, childIndent, !n.Arguments.Any());
+                if (n.Arguments.Any())
+                {
+                    PrintNodeRecursive(new AstListNode("Arguments", n.Arguments), childIndent, true);
+                }
                 break;
             case LiteralExpr n:
                 string val = n.Value is string s ? $"\"{s}\"" : (n.Value?.ToString() ?? "null");
@@ -144,6 +146,10 @@ public class AstPrinter
                 break;
             case NopStmt n:
                 _sb.AppendLine($"(Empty {n.Name})");
+                break;
+
+            default:
+                _sb.AppendLine($"??? UNKNOWN NODE: {node.GetType()} ???");
                 break;
         }
     }

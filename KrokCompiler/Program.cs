@@ -50,20 +50,33 @@ Utils.PrintConstantsAndIdentifiers(tokens);
 if (tokens.Count == 0) return;
 Utils.PrintSuccess("Lexer: Lexical analysis completed successfully");
 
-Console.WriteLine("--- Staring Syntax Analisis ---");
 try
 {
-    Parser parser = new Parser(tokens);
-    ProgramNode ast = parser.ParseProgram();
-    Utils.PrintSuccess("Syntax Analysis Successful: Program is valid!");
+	Console.WriteLine("--- Staring Syntax Analisis ---");
+	Parser parser = new Parser(tokens);
+	ProgramNode ast = parser.ParseProgram();
+    Utils.PrintSuccess("Syntax Analysis Successful");
+	Console.WriteLine("--- Staring Semantic Analisis ---");
+	SemanticAnalyzer analizer = new SemanticAnalyzer();
+	analizer.Analyze(ast);
 	Utils.PrintSuccess("----Abstract Syntax Tree----");
 	var printer = new AstPrinter();
 	string astString = printer.Print(ast);
 	Console.WriteLine(astString);
+	Utils.PrintSuccess("Semantic Analysis Successful: Program is valid!");
 }
 catch (ParserException e)
 {
     Utils.PrintError($"Syntax Analysis Failed \n{e.Message}");
+}
+catch (SemanticException se)
+{
+	Utils.PrintError($"Semantic Analysis Failed \n{se.Message}");
+}
+catch (Exception)
+{
+
+    throw;
 }
 
 Console.ReadKey();

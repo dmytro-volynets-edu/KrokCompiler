@@ -183,7 +183,10 @@ namespace KrokCompiler.Lexer
                 { "string", TokenType.KwString },
                 { "void", TokenType.KwVoid },
                 { "read", TokenType.KwRead },
-                { "write", TokenType.KwWrite }
+                { "write", TokenType.KwWrite },
+                { "true", TokenType.BoolConst },
+				{ "false", TokenType.BoolConst },
+
             };
 
             // Таблиця токенів за станом
