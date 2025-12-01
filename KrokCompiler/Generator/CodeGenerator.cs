@@ -13,6 +13,9 @@ namespace KrokCompiler.Generator
 
         private Dictionary<string, string> _variableTypes = new();
 
+        private Stack<string> _breakLabels = new Stack<string>();
+
+
         public CodeGenerator(string mainModuleName, IReadOnlyDictionary<string, FunctionSignature> functions)
         {
             _mainModuleName = mainModuleName;
@@ -87,7 +90,7 @@ namespace KrokCompiler.Generator
             if (mainFunc != null)
             {
                 mainFunc.Body.Accept(this);
-                Emit("RET", "ret_op");
+                //Emit("RET", "ret_op");
             }
         }
 
@@ -168,7 +171,62 @@ namespace KrokCompiler.Generator
 
         public void VisitWriteStmt(WriteStmt stmt)
         {
-            foreach (var arg in stmt.Arguments) { arg.Accept(this); Emit("OUT", "out_op"); }
+            if (stmt.Arguments.Count == 0)
+            {
+                Emit("\"\"", "string"); 
+                Emit("OUT", "out_op");
+                return;
+            }
+
+            // 1. Обробляємо перший аргумент
+            var firstArg = stmt.Arguments[0];
+            firstArg.Accept(this);
+            ConvertToStringIfNeeded(firstArg); // Переконуємось, що це рядок
+
+            // 2. Для кожного наступного аргументу:
+            for (int i = 1; i < stmt.Arguments.Count; i++)
+            {
+                var arg = stmt.Arguments[i];
+                arg.Accept(this);
+                ConvertToStringIfNeeded(arg); // Переконуємось, що це рядок
+
+                // Клеїмо до попереднього результату
+                Emit("CAT", "cat_op");
+            }
+
+            // 3. Виводимо фінальний (склеєний) рядок
+            Emit("OUT", "out_op");
+        }
+        private void ConvertToStringIfNeeded(Expr expr)
+        {
+            // Якщо вираз вже є рядком, нічого не робимо
+            if (expr.EvaluatedType == KrokType.String) return;
+
+            // Якщо ні, генеруємо інструкцію конвертації
+            string convOp = expr.EvaluatedType switch
+            {
+                KrokType.Int => "i2s",
+                KrokType.Float64 => "f2s",
+                KrokType.Bool => "b2s",
+                // Для Bool у PSM немає прямої інструкції b2s (bool to string).
+                // Якщо PSM впаде, доведеться залишити bool як є, сподіваючись, що CAT спрацює.
+                // Але за специфікацією CAT вимагає рядків.
+                _ => ""
+            };
+
+            if (string.IsNullOrEmpty(convOp) && expr.EvaluatedType != KrokType.String)
+            {
+                // Для 'div' (/) результат завжди float
+                if (expr is BinaryExpr binExpr && binExpr.Operator.Type == TokenType.OpDiv)
+                {
+                    convOp = "f2s"; // Примусово
+                }
+            }
+
+            if (!string.IsNullOrEmpty(convOp))
+            {
+                Emit(convOp, "conv");
+            }
         }
 
         public void VisitIfStmt(IfStmt stmt)
@@ -188,6 +246,9 @@ namespace KrokCompiler.Generator
         {
             string labelStart = NewLabel();
             string labelEnd = NewLabel();
+
+            _breakLabels.Push(labelEnd);
+
             stmt.Initializer?.Accept(this);
             EmitLabel(labelStart);
             if (stmt.Condition != null)
@@ -199,10 +260,22 @@ namespace KrokCompiler.Generator
             stmt.Increment?.Accept(this);
             Emit(labelStart, "label"); Emit("JUMP", "jump");
             EmitLabel(labelEnd);
+
+            _breakLabels.Pop();
         }
 
         public void VisitReturnStmt(ReturnStmt stmt) { if (stmt.Value != null) stmt.Value.Accept(this); Emit("RET", "ret_op"); }
-        public void VisitBreakStmt(BreakStmt stmt) { /* Потрібен стек міток */ }
+        public void VisitBreakStmt(BreakStmt stmt)
+        {
+            // Отримуємо мітку виходу з найближчого циклу
+            if (_breakLabels.Count > 0)
+            {
+                string exitLabel = _breakLabels.Peek();
+                Emit(exitLabel, "label");
+                Emit("JUMP", "jump");
+            }
+            // SemanticAnalyzer вже перевірив, що ми в циклі, тому else не потрібен
+        }
         public void VisitExpressionStmt(ExpressionStmt stmt) { stmt.Expression.Accept(this); }
 
         public void VisitCallExpr(CallExpr expr)

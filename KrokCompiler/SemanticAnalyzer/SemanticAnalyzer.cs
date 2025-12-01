@@ -231,6 +231,10 @@ public class SemanticAnalyzer : IAstVisitor
             case TokenType.OpLe:
                 _lastExpressionType = KrokType.Bool;
                 break;
+            case TokenType.OpDiv:
+                expr.EvaluatedType = KrokType.Float64;
+                _lastExpressionType = expr.EvaluatedType;
+                break;
             default:
                 // Для -, *, /, ^
                 if (l == KrokType.Int && r == KrokType.Int && expr.Operator.Type != TokenType.OpDiv)
