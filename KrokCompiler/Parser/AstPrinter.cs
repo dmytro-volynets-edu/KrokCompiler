@@ -120,7 +120,7 @@ public class AstPrinter
                 PrintNodeRecursive(n.Right, childIndent, true);
                 break;
             case CastExpr n:
-                _sb.AppendLine($"Cast ({n.Type.Lexeme})");
+                _sb.AppendLine($"Cast ({n.TargetTypeToken.Lexeme})");
                 PrintNodeRecursive(n.Expression, childIndent, true);
                 break;
             case CallExpr n:

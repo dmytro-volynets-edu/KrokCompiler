@@ -59,7 +59,7 @@ namespace KrokCompiler.Abstractions
         public override void Accept(IAstVisitor visitor) => visitor.VisitAssignStmt(this);
     }
 
-    public record CastExpr(Token Type, Expr Expression) : Expr
+    public record CastExpr(Token TargetTypeToken, Expr Expression) : Expr
     {
         public override void Accept(IAstVisitor visitor) => visitor.VisitCastExpr(this);
     }

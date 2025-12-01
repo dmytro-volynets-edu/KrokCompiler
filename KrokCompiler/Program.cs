@@ -1,8 +1,8 @@
 ﻿using KrokCompiler.Abstractions;
+using KrokCompiler.Generator;
 using KrokCompiler.Lexer;
 using KrokCompiler.Models;
 using KrokCompiler.Parser;
-using KrokCompiler.Generator;
 
 string filePath = "..\\..\\..\\..\\..\\demo.kr";
 if (args.Length == 0)
@@ -49,6 +49,7 @@ Utils.PrintConstantsAndIdentifiers(tokens);
 if (tokens.Count == 0) return;
 Utils.PrintSuccess("Lexer: Lexical analysis completed successfully");
 ProgramNode? ast = null;
+SemanticAnalyzer? analizer = null;
 try
 {
 	Console.WriteLine("--- Staring Syntax Analisis ---");
@@ -56,7 +57,7 @@ try
 	ast = parser.ParseProgram();
     Utils.PrintSuccess("Syntax Analysis Successful");
 	Console.WriteLine("--- Staring Semantic Analisis ---");
-	SemanticAnalyzer analizer = new SemanticAnalyzer();
+    analizer = new SemanticAnalyzer();
 	analizer.Analyze(ast);
 	Utils.PrintSuccess("----Abstract Syntax Tree----");
 	var printer = new AstPrinter();
@@ -82,8 +83,13 @@ if(ast == null)
     Utils.PrintError($"Something went wrong. AST is empty.");
     return;
 }
+if (analizer == null)
+{
+    Utils.PrintError($"Something went wrong. SemanticAnalyzer result is empty.");
+    return;
+}
 Console.WriteLine("--- Generating Code ---");
-var generator = new CodeGenerator("prog");
+var generator = new CodeGenerator("prog", analizer.Functions);
 var files = generator.Generate(ast);
 
 foreach (var file in files)

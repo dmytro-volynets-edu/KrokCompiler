@@ -1,4 +1,6 @@
-﻿namespace KrokCompiler.Abstractions
+﻿using KrokCompiler.Models;
+
+namespace KrokCompiler.Abstractions
 {
     public interface IAstNode
     {
@@ -6,6 +8,7 @@
     }
     public abstract record Expr : IAstNode
     {
+        public KrokType EvaluatedType { get; set; } = KrokType.Void;
         public abstract void Accept(IAstVisitor visitor);
     }
 
