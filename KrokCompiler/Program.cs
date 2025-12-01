@@ -2,14 +2,13 @@
 using KrokCompiler.Lexer;
 using KrokCompiler.Models;
 using KrokCompiler.Parser;
+using KrokCompiler.Generator;
 
 string filePath = "..\\..\\..\\..\\..\\demo.kr";
 if (args.Length == 0)
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine("Error: No path to the file .kr specified");
-    Console.WriteLine("Example: .\\KrokLexer.exe my_program.kr");
-    Console.ResetColor();
+    Utils.PrintError("Error: No path to the file .kr specified");
+    Utils.PrintError("Example: .\\KrokLexer.exe my_program.kr");
     //return;
 }
 else
@@ -49,12 +48,12 @@ List<Token> tokens = lexer.Analyze();
 Utils.PrintConstantsAndIdentifiers(tokens);
 if (tokens.Count == 0) return;
 Utils.PrintSuccess("Lexer: Lexical analysis completed successfully");
-
+ProgramNode? ast = null;
 try
 {
 	Console.WriteLine("--- Staring Syntax Analisis ---");
 	Parser parser = new Parser(tokens);
-	ProgramNode ast = parser.ParseProgram();
+	ast = parser.ParseProgram();
     Utils.PrintSuccess("Syntax Analysis Successful");
 	Console.WriteLine("--- Staring Semantic Analisis ---");
 	SemanticAnalyzer analizer = new SemanticAnalyzer();
@@ -78,5 +77,21 @@ catch (Exception)
 
     throw;
 }
+if(ast == null)
+{
+    Utils.PrintError($"Something went wrong. AST is empty.");
+    return;
+}
+Console.WriteLine("--- Generating Code ---");
+var generator = new CodeGenerator("prog");
+var files = generator.Generate(ast);
+
+foreach (var file in files)
+{
+    Console.WriteLine($"Writing file: {file.Key}");
+    Directory.CreateDirectory("output");
+    File.WriteAllText($"output/{file.Key}", file.Value);
+}
+Console.WriteLine("--- Compilation Complete ---");
 
 Console.ReadKey();
