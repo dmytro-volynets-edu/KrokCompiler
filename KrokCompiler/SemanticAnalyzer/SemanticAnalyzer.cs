@@ -51,6 +51,13 @@ public class SemanticAnalyzer : IAstVisitor
         // Це дозволяє викликати функції до їх оголошення.
         CollectFunctionSignatures(node.Statements);
 
+        if (!_functionSignatures.ContainsKey("main"))
+        {
+            // У нас немає токена для цієї помилки, тому кидаємо 
+            // загальну помилку, посилаючись на початок файлу (рядок 1)
+            throw new SemanticException("Undefined entry point: 'main' function was not found.",
+                new Token(TokenType.Eof, "", null, 1, 1)); // (або null, якщо токен не потрібен)
+        }
         // --- ДРУГИЙ ПРОХІД: Повний аналіз ---
         // (Ми також могли б зробити це за 1 прохід, 
         // але тоді Krok не підтримував би виклик функцій, 
