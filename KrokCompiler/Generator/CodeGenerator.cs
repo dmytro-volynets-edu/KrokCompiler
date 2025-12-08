@@ -46,9 +46,9 @@ namespace KrokCompiler.Generator
         private void EmitLabel(string label)
         {
             // 1. Записуємо поточну адресу (індекс наступної інструкції)
-            // Поточна кількість інструкцій = індекс наступної.
-            // Але ми зараз додамо ще 2 інструкції (label і colon).
-            // Тому реальна інструкція, на яку ми стрибаємо, буде через 2 позиції.
+            // Поточна кількість інструкцій = індекс наступної,
+            // але зараз ми додамо ще 2 інструкції (label і colon),
+            // тому реальна інструкція на яку ми стрибаємо, буде через 2 позиції:
             // index: label (current)
             // index+1: colon
             // index+2: <TARGET INSTRUCTION>
@@ -208,9 +208,6 @@ namespace KrokCompiler.Generator
                 KrokType.Int => "i2s",
                 KrokType.Float64 => "f2s",
                 KrokType.Bool => "b2s",
-                // Для Bool у PSM немає прямої інструкції b2s (bool to string).
-                // Якщо PSM впаде, доведеться залишити bool як є, сподіваючись, що CAT спрацює.
-                // Але за специфікацією CAT вимагає рядків.
                 _ => ""
             };
 
